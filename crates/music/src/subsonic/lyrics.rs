@@ -129,17 +129,17 @@ fn sheet(entry: StructuredLyrics) -> Option<Lyrics> {
     let offset = entry.offset.unwrap_or(0.);
     if entry.synced {
         let mut lines: Vec<LyricsLine>;
-        if entry.cue_line.is_some() {
+        if entry.cue_line.as_ref().is_some_and(|v| !v.is_empty()) {
             lines = entry
                 .cue_line?
                 .iter()
                 .filter_map(|cue| {
                     Some(LyricsLine {
                         start: shifted(cue.start?, offset),
-                        end: Some(shifted(cue.end?, offset)),
+                        end: cue.end.map(|value| shifted(value, offset)),
                         text: cue.value.clone()?.trim().to_owned(),
                         romanized: None,
-                        words: cues(cue.cue.to_owned(), offset),
+                        words: cues(&cue.cue, offset),
                         secondary: Vec::new(),
                         voice: if cue.agent_id.to_owned()? == "v1" {
                             Voice::Lead
@@ -197,7 +197,7 @@ fn legacy_sheet(text: &str) -> Option<Lyrics> {
     }
 }
 
-fn cues(cues: Vec<Cue>, offset: f64) -> Option<Vec<LyricsWord>> {
+fn cues(cues: &[Cue], offset: f64) -> Option<Vec<LyricsWord>> {
     if cues.is_empty() {
         return None;
     }
