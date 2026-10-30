@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use opensubsonic::data::{Cue, StructuredLyrics};
+use opensubsonic::data::{Cue, CueLine, StructuredLyrics};
 
 use crate::lyrics::lrc;
 use crate::subsonic::auth::{self, Credentials};
@@ -129,11 +129,30 @@ fn sheet(entry: StructuredLyrics) -> Option<Lyrics> {
     let offset = entry.offset.unwrap_or(0.);
     if entry.synced {
         let mut lines: Vec<LyricsLine>;
-        if entry.cue_line.as_ref().is_some_and(|v| !v.is_empty()) {
-            lines = entry
-                .cue_line?
+        let cue_lines: Option<&Vec<CueLine>> = entry.cue_line.as_ref();
+
+        if cue_lines.is_some_and(|v| !v.is_empty()) {
+            let agents = entry.agents.as_ref();
+            let agents_exists: bool = agents.is_some_and(|a| !a.is_empty());
+
+            lines = cue_lines?
                 .iter()
                 .filter_map(|cue| {
+                    let voice: Voice;
+                    if agents_exists && cue.agent_id.is_some() {
+                        let agent = agents?
+                            .iter()
+                            .find(|&agent| cue.agent_id.to_owned().unwrap() == agent.id);
+
+                        voice = if agent?.role == "main" {
+                            Voice::Lead
+                        } else {
+                            Voice::Counter
+                        };
+                    } else {
+                        voice = Voice::Lead;
+                    }
+
                     Some(LyricsLine {
                         start: shifted(cue.start?, offset),
                         end: cue.end.map(|value| shifted(value, offset)),
@@ -141,11 +160,7 @@ fn sheet(entry: StructuredLyrics) -> Option<Lyrics> {
                         romanized: None,
                         words: cues(&cue.cue, offset),
                         secondary: Vec::new(),
-                        voice: if cue.agent_id.to_owned()? == "v1" {
-                            Voice::Lead
-                        } else {
-                            Voice::Counter
-                        },
+                        voice,
                     })
                 })
                 .collect();
